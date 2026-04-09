@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Masters Pool — Live</title>
+<style>
+  :root {
+    --bg: #0b1d12;
+    --bg-2: #0f2a1a;
+    --panel: #11331f;
+    --panel-2: #0c2416;
+    --line: #1f4a2e;
+    --gold: #d4af37;
+    --gold-2: #b8912b;
+    --cream: #f4efe1;
+    --text: #eef6ee;
+    --muted: #9cb5a3;
+    --red: #e55b3c;
+    --green: #4fd18b;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #16391f 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #0f2a1a 0%, transparent 55%),
+      linear-gradient(180deg, #081710 0%, #0b1d12 100%);
+    color: var(--text);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 28px 32px 18px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(212,175,55,0.06), transparent);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  .title-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  h1 {
+    font-family: "Didot", "Bodoni 72", "Playfair Display", Georgia, serif;
+    font-weight: 600;
+    font-size: 34px;
+    letter-spacing: 0.5px;
+    margin: 0;
+    color: var(--cream);
+  }
+  h1 .accent { color: var(--gold); }
+  .sub {
+    color: var(--muted);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    margin-top: 4px;
+  }
+  .status {
+    display: flex; align-items: center; gap: 10px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1.5px;
+  }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 0 rgba(79,209,139,0.7);
+    animation: pulse 1.8s infinite;
+  }
+  .dot.err { background: var(--red); animation: none; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(79,209,139,0.6); }
+    70%  { box-shadow: 0 0 0 10px rgba(79,209,139,0); }
+    100% { box-shadow: 0 0 0 0 rgba(79,209,139,0); }
+  }
+  main {
+    padding: 24px 32px 80px;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+    overflow: hidden;
+  }
+  .panel h2 {
+    margin: 0;
+    padding: 16px 20px;
+    font-family: "Didot", "Bodoni 72", Georgia, serif;
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: 0.3px;
+    color: var(--cream);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel h2 .count {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+  }
+  thead th {
+    position: sticky; top: 0;
+    background: #0a2013;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 1.3px;
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th.num { text-align: right; }
+  thead th:hover { color: var(--gold); }
+  tbody td {
+    padding: 11px 14px;
+    border-bottom: 1px solid rgba(31,74,46,0.5);
+    vertical-align: middle;
+  }
+  tbody tr:hover { background: rgba(212,175,55,0.04); }
+  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .rank {
+    display: inline-block;
+    min-width: 26px;
+    font-weight: 700;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+  .team-name { color: var(--cream); font-weight: 600; }
+  .score-neg { color: var(--red); font-weight: 700; }
+  .score-pos { color: var(--text); }
+  .score-e   { color: var(--muted); }
+
+  .players {
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .players .p {
+    display: inline-block;
+    margin-right: 10px;
+    white-space: nowrap;
+  }
+  .players .p .s { color: var(--gold); font-variant-numeric: tabular-nums; margin-left: 4px; }
+  .players .p .t {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 5px;
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid rgba(156,181,163,0.3);
+    border-radius: 2px;
+    font-variant-numeric: tabular-nums;
+    vertical-align: 1px;
+  }
+  .players .p.cut { text-decoration: line-through; opacity: 0.55; }
+  .players .p.miss { color: #6a8673; font-style: italic; }
+
+  .tb-cell { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+  tr.leader {
+    background: linear-gradient(90deg, rgba(212,175,55,0.18) 0%, rgba(212,175,55,0.04) 100%) !important;
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+  tr.leader .team-name { color: var(--gold); }
+  tr.leader .rank { color: var(--cream); }
+  .crown {
+    color: var(--gold);
+    font-size: 11px;
+    margin-left: 4px;
+    text-shadow: 0 0 8px rgba(212,175,55,0.6);
+  }
+
+  /* Leaderboard table (right side) */
+  .board tbody td { font-size: 13.5px; }
+  .board .pos { color: var(--gold); font-weight: 700; width: 42px; }
+  .board .plr { color: var(--cream); font-weight: 600; }
+  .board .thru { color: var(--muted); font-size: 12px; }
+
+  footer {
+    text-align: center;
+    padding: 18px;
+    color: var(--muted);
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-top: 1px solid var(--line);
+  }
+  footer .gold { color: var(--gold); letter-spacing: 3px; }
+
+  .controls {
+    display: flex; gap: 10px; align-items: center;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+  }
+  .btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--cream);
+    padding: 7px 14px;
+    border-radius: 3px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+  .btn:hover { border-color: var(--gold); color: var(--gold); }
+
+  .banner {
+    text-align: center;
+    padding: 10px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8b6f1e;
+    background: rgba(212,175,55,0.07);
+    border-bottom: 1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-row">
+    <div>
+      <h1>The <span class="accent">Masters</span> Pool <span class="accent">·</span> Live Dashboard</h1>
+      <div class="sub">Augusta National &nbsp;·&nbsp; A Tradition Unlike Any Other &nbsp;·&nbsp; <span id="roundInfo" style="color:var(--gold);">—</span></div>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Connecting…</span>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+</header>
+
+<div class="banner" id="banner">Scoring each entry as the sum of its 4 golfers' scores-to-par. Missed/cut players score +10. Tiebreakers tracked but not added.</div>
+
+<main>
+  <section class="panel">
+    <h2>Pool Standings <span class="count" id="poolCount"></span></h2>
+    <div style="max-height: 78vh; overflow: auto;">
+      <table id="poolTable">
+        <thead>
+          <tr>
+            <th data-sort="rank">#</th>
+            <th data-sort="name">Entry</th>
+            <th data-sort="total" class="num">To Par</th>
+            <th>Roster</th>
+            <th data-sort="tb" class="num" title="Tiebreaker score (sum of tiebreaker picks). Lower wins ties.">TB</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Tournament Leaderboard <span class="count" id="tourCount"></span></h2>
+    <div style="max-height: 78vh; overflow: auto;">
+      <table class="board" id="tourTable">
+        <thead>
+          <tr>
+            <th>Pos</th>
+            <th>Player</th>
+            <th class="num">To Par</th>
+            <th class="num">Thru</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Powered by <span class="gold">Richmond Quant</span> &nbsp;·&nbsp; Live data via ESPN &nbsp;·&nbsp; Auto-refresh every 60s
+</footer>
+
+<script>
+// ============================================================
+// POOL ENTRIES
+// ============================================================
+const ENTRIES = [
+  {"name":"Koz","players":["Young","Rahm","Bryson","Xander"],"tiebreakers":["Zalatoris","Hideki"]},
+  {"name":"Sam1","players":["Scottie","Aberg","Fitzpatrick","Xander"],"tiebreakers":["Aberg","Fitzpatrick"]},
+  {"name":"Sam2","players":["Scottie","Aberg","Hideki","Rose"],"tiebreakers":["Aberg","Xander"]},
+  {"name":"Sam3","players":["Rory","MacIntyre","Fitzpatrick","Gotterup"],"tiebreakers":["Fitzpatrick","MacIntyre"]},
+  {"name":"Jim1","players":["Young","Aberg","Bryson","Gotterup"],"tiebreakers":["Xander","MacIntyre"]},
+  {"name":"Jim2","players":["Scottie","Rahm","Fitzpatrick","Reed"],"tiebreakers":["Aberg","Rose"]},
+  {"name":"Allan1","players":["Scottie","Rahm","Bryson","Reed"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"Allan2","players":["Rory","Rahm","Rose","Reed"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"Allan3","players":["Fleetwood","Rahm","Aberg","Xander"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"MP1","players":["Scottie","Aberg","Spieth","Xander"],"tiebreakers":["Aberg","Xander"]},
+  {"name":"MP2","players":["Rory","Rahm","Aberg","Hideki"],"tiebreakers":["Rahm","Hideki"]},
+  {"name":"MP3","players":["Fleetwood","Koepka","Smith","Zalatoris"],"tiebreakers":["Koepka","Zalatoris"]},
+  {"name":"Nick1","players":["Scottie","Rahm","Bryson","Fitzpatrick"],"tiebreakers":["Rahm","Fitzpatrick"]},
+  {"name":"Nick2","players":["Rory","Aberg","Bryson","Xander"],"tiebreakers":["Xander","Aberg"]},
+  {"name":"Nick3","players":["Scottie","Rahm","Rose","MacIntyre"],"tiebreakers":["Rose","Rahm"]},
+  {"name":"Bonnie1","players":["Scottie","Aberg","Cantlay","Reed"],"tiebreakers":["Xander","Rahm"]},
+  {"name":"Bonnie2","players":["Fleetwood","Hojgaard","Hideki","Day"],"tiebreakers":["Xander","Rahm"]},
+  {"name":"Bonnie3","players":["Young","Rahm","Bryson","Xander"],"tiebreakers":["Xander","Rahm"]},
+  {"name":"Brad1","players":["Scottie","Rahm","Bryson","Aberg"],"tiebreakers":["Rahm","Aberg"]},
+  {"name":"Brad2","players":["Rory","Rose","Hideki","Fitzpatrick"],"tiebreakers":["Fitzpatrick","Rose"]},
+  {"name":"Gaillard","players":["Scottie","Aberg","Bryson","Fitzpatrick"],"tiebreakers":["Bryson","Aberg"]},
+  {"name":"Ted","players":["Scottie","Aberg","Gotterup","Xander"],"tiebreakers":["Xander","Aberg"]},
+  {"name":"JP1","players":["Scottie","Rahm","Aberg","Xander"],"tiebreakers":["Xander","Rahm"]},
+  {"name":"JP2","players":["Fleetwood","Si Woo","Hideki","Min Woo"],"tiebreakers":["Si Woo","Min Woo"]},
+  {"name":"Lee","players":["Young","Rahm","Aberg","Bryson"],"tiebreakers":["Bryson","Aberg"]},
+  {"name":"Salp","players":["Scottie","Aberg","Bryson","Rose"],"tiebreakers":["Rahm","Bhatia"]},
+  {"name":"George Lee","players":["Young","Rahm","Fitzpatrick","Reed"],"tiebreakers":["Reed","Fitzpatrick"]},
+  {"name":"Andy1","players":["Scottie","Rahm","Bryson","Koepka"],"tiebreakers":["Si Woo","JT"]},
+  {"name":"Andy2","players":["Young","Aberg","Fitzpatrick","Rose"],"tiebreakers":["Koepka","Bryson"]},
+  {"name":"Andy3","players":["Fleetwood","MacIntyre","Koepka","Xander"],"tiebreakers":["Bryson","Rose"]},
+  {"name":"Oliver1","players":["Fleetwood","Aberg","Spieth","Xander"],"tiebreakers":["Xander","Aberg"]},
+  {"name":"Oliver2","players":["Rory","Rahm","Rose","Bhatia"],"tiebreakers":["Rahm","Rose"]},
+  {"name":"Oliver3","players":["Young","Rahm","Rose","Xander"],"tiebreakers":["Rahm","Xander"]},
+  {"name":"Debbie","players":["Young","Rahm","Bryson","Fitzpatrick"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"Sabo1","players":["Scottie","MacIntyre","Hideki","Reed"],"tiebreakers":["MacIntyre","Reed"]},
+  {"name":"Sabo2","players":["Rory","Rahm","Aberg","Xander"],"tiebreakers":["Aberg","Rahm"]},
+  {"name":"Sabo3","players":["Spaun","Rahm","Aberg","Bryson"],"tiebreakers":["Aberg","Rahm"]},
+  {"name":"TomJ","players":["Fleetwood","Im","Conners","Xander"],"tiebreakers":["Xander","Im"]},
+  {"name":"Danny1","players":["Scottie","Min Woo","Reed","Xander"],"tiebreakers":["Scott","Bhatia"]},
+  {"name":"Danny2","players":["Rory","Hojgaard","Bryson","Conners"],"tiebreakers":["English","Berger"]},
+  {"name":"Carolyn","players":["Scottie","MacIntyre","Henley","Fitzpatrick"],"tiebreakers":["Echavarria","Griffin"]},
+  {"name":"Grace","players":["Fleetwood","Rose","Bryson","JT"],"tiebreakers":["Reed","Rahm"]},
+  {"name":"Chris","players":["Henley","Reed","Hideki","Xander"],"tiebreakers":["MacIntyre","Fleetwood"]},
+  {"name":"MikeH","players":["Young","Aberg","Morikawa","Xander"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"Jess1","players":["Scottie","Rahm","Bryson","Fitzpatrick"],"tiebreakers":["Hideki","Aberg"]},
+  {"name":"Jess2","players":["Spaun","Aberg","MacIntyre","Xander"],"tiebreakers":["Bryson","Rose"]},
+  {"name":"Andrew1","players":["Scottie","Rahm","Fitzpatrick","Xander"],"tiebreakers":["Bryson","Hideki"]},
+  {"name":"Andrew2","players":["Rory","Aberg","Bryson","Reed"],"tiebreakers":["Hideki","Spieth"]},
+  {"name":"Joel","players":["Fleetwood","Min Woo","Reed","Xander"],"tiebreakers":["Xander","Reed"]},
+  {"name":"Samantha","players":["Scottie","Aberg","Si Woo","JT"],"tiebreakers":["Aberg","JT"]},
+  {"name":"Susan","players":["Scottie","Rahm","Spieth","Fitzpatrick"],"tiebreakers":["Fitzpatrick","Spieth"]},
+  {"name":"Claire","players":["Scottie","Koepka","Hideki","Xander"],"tiebreakers":["Xander","Koepka"]},
+  {"name":"Schuma","players":["Young","MacIntyre","Rose","Xander"],"tiebreakers":["Xander","MacIntyre"]},
+  {"name":"Carol","players":["Fleetwood","Aberg","Koepka","Burns"],"tiebreakers":["Lowry","Bryson"]},
+  {"name":"Patrick","players":["Fleetwood","Rose","Reed","Xander"],"tiebreakers":["Rose","Xander"]},
+  {"name":"Bryan","players":["Scottie","Rahm","Aberg","Xander"],"tiebreakers":["Hideki","Niemann"]},
+  {"name":"JohnE","players":["Rory","Aberg","Hideki","Xander"],"tiebreakers":["Aberg","Xander"]}
+];
+
+// ============================================================
+// NAME NORMALIZATION — user keys are first names or surnames
+// Map each pool key -> canonical (lowercase) match string(s) that
+// should appear in the ESPN player displayName.
+// ============================================================
+const NAME_ALIASES = {
+  "Scottie":    ["scheffler"],
+  "Rory":       ["mcilroy"],
+  "Bryson":     ["dechambeau"],
+  "Xander":     ["schauffele"],
+  "Rahm":       ["rahm"],
+  "Young":      ["cameron young"],
+  "Aberg":      ["aberg"],
+  "Fitzpatrick":["fitzpatrick"],
+  "Hideki":     ["matsuyama"],
+  "Rose":       ["justin rose"],
+  "MacIntyre":  ["macintyre"],
+  "Gotterup":   ["gotterup"],
+  "Fleetwood":  ["fleetwood"],
+  "Reed":       ["patrick reed"],
+  "Spieth":     ["spieth"],
+  "Cantlay":    ["cantlay"],
+  "Hojgaard":   ["hojgaard","højgaard"],
+  "Day":        ["jason day"],
+  "Koepka":     ["koepka"],
+  "Smith":      ["cameron smith"],
+  "Zalatoris":  ["zalatoris"],
+  "Si Woo":     ["si woo"],
+  "Min Woo":    ["min woo"],
+  "Bhatia":     ["bhatia"],
+  "JT":         ["justin thomas"],
+  "Spaun":      ["spaun"],
+  "Im":         ["sungjae im"],
+  "Conners":    ["conners"],
+  "Scott":      ["adam scott"],
+  "English":    ["harris english"],
+  "Berger":     ["daniel berger"],
+  "Henley":     ["henley"],
+  "Echavarria": ["echavarria"],
+  "Griffin":    ["ben griffin"],
+  "Morikawa":   ["morikawa"],
+  "Burns":      ["sam burns"],
+  "Lowry":      ["lowry"],
+  "Niemann":    ["niemann"]
+};
+
+// Penalty for a player we couldn't find / MC / WD
+const MISSING_PENALTY = 10;
+
+// ============================================================
+// ESPN DATA
+// ============================================================
+const ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga";
+
+// Fallback: if the league query returns something else, try the generic endpoint.
+const ESPN_FALLBACK = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/leaderboard";
+
+async function fetchLeaderboard() {
+  const urls = [ESPN_URL, ESPN_FALLBACK];
+  let lastErr;
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      const result = extractPlayers(j);
+      if (result.players.length) return { ...result, raw: j };
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("No data");
+}
+
+function extractPlayers(json) {
+  const out = [];
+  let roundInfo = { name: "", round: "", status: "" };
+  const events = json && json.events ? json.events : [];
+  const preferred = events.find(e => /master/i.test(e.name || e.shortName || "")) || events[0];
+  if (!preferred) return { players: out, roundInfo };
+
+  roundInfo.name = preferred.shortName || preferred.name || "";
+  if (preferred.status) {
+    roundInfo.round = preferred.status.period ? "Round " + preferred.status.period : "";
+    roundInfo.status = (preferred.status.type && (preferred.status.type.description || preferred.status.type.name)) || "";
+  }
+
+  const comp = (preferred.competitions && preferred.competitions[0]) || null;
+  if (!comp) return { players: out, roundInfo };
+  if (comp.status && !roundInfo.round && comp.status.period) {
+    roundInfo.round = "Round " + comp.status.period;
+  }
+  const competitors = comp.competitors || [];
+
+  for (const c of competitors) {
+    const athlete = c.athlete || {};
+    const name = athlete.displayName || athlete.fullName || "";
+    if (!name) continue;
+
+    // Position / score to par
+    let pos = "";
+    let thru = "";
+    let toPar = null;
+    let statusName = "";
+
+    if (c.status) {
+      statusName = (c.status.type && (c.status.type.description || c.status.type.name)) || c.status.displayValue || "";
+      if (c.status.position && c.status.position.displayName) pos = c.status.position.displayName;
+      if (typeof c.status.thru !== "undefined") thru = c.status.thru;
+    }
+    // statistics array
+    if (Array.isArray(c.statistics)) {
+      for (const s of c.statistics) {
+        const nm = (s.name || "").toLowerCase();
+        if (nm === "scoretopar" || nm === "tofinish" || nm === "scoreToPar".toLowerCase()) {
+          const v = parseScore(s.displayValue);
+          if (v !== null) toPar = v;
+        }
+      }
+    }
+    // Sometimes shown in `score.displayValue` or `linescores`
+    if (toPar === null && c.score) {
+      const v = parseScore(typeof c.score === "string" ? c.score : c.score.displayValue);
+      if (v !== null) toPar = v;
+    }
+    // Fallback: c.linescores sum... but usually scoretopar is there.
+
+    // Cut / WD detection
+    const cut = /cut|WD|DQ|withdraw/i.test(statusName) || /CUT|WD|DQ/i.test(pos);
+
+    out.push({
+      name,
+      nameLc: stripDiacritics(name.toLowerCase()),
+      pos: pos || "",
+      thru: thru === 0 || thru ? String(thru) : "",
+      toPar: toPar,
+      cut: cut,
+      status: statusName
+    });
+  }
+  return { players: out, roundInfo };
+}
+
+function parseScore(v) {
+  if (v === null || typeof v === "undefined") return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (/^E$/i.test(s)) return 0;
+  const m = s.match(/^([+-]?)(\d+)$/);
+  if (m) return parseInt((m[1] === "-" ? "-" : "") + m[2], 10);
+  // Accept things like "-3" straight
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+function stripDiacritics(s) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+// ============================================================
+// MATCHING
+// ============================================================
+function matchPlayer(key, players) {
+  const aliases = NAME_ALIASES[key] || [key.toLowerCase()];
+  for (const a of aliases) {
+    const needle = stripDiacritics(a.toLowerCase());
+    // Exact-ish: displayName contains the needle
+    const hit = players.find(p => p.nameLc.includes(needle));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+let sortKey = "total";
+let sortDir = 1; // 1 asc
+
+function formatScore(v) {
+  if (v === null || typeof v === "undefined") return "—";
+  if (v === 0) return "E";
+  return v > 0 ? "+" + v : String(v);
+}
+function scoreClass(v) {
+  if (v === null || typeof v === "undefined") return "score-e";
+  if (v < 0) return "score-neg";
+  if (v === 0) return "score-e";
+  return "score-pos";
+}
+
+// Display label for a matched player — special-cases multi-word given names
+// so "Min Woo Lee" doesn't collapse to just "Lee"
+function displayLabel(fullName) {
+  const lc = fullName.toLowerCase();
+  if (lc.includes("min woo lee")) return "Min Woo";
+  if (lc.includes("si woo kim")) return "Si Woo";
+  if (lc.includes("tom kim")) return "T. Kim";
+  if (lc.includes("michael kim")) return "M. Kim";
+  if (lc.includes("cameron young")) return "Young";
+  if (lc.includes("cameron smith")) return "C. Smith";
+  if (lc.includes("justin rose")) return "Rose";
+  if (lc.includes("justin thomas")) return "Thomas";
+  if (lc.includes("patrick reed")) return "Reed";
+  if (lc.includes("adam scott")) return "Scott";
+  if (lc.includes("jason day")) return "Day";
+  if (lc.includes("sam burns")) return "Burns";
+  if (lc.includes("shane lowry")) return "Lowry";
+  if (lc.includes("nicolai højgaard") || lc.includes("nicolai hojgaard")) return "N. Højgaard";
+  if (lc.includes("rasmus højgaard") || lc.includes("rasmus hojgaard")) return "R. Højgaard";
+  // Default: last token
+  return fullName.split(" ").slice(-1)[0];
+}
+
+function scoreEntries(players) {
+  return ENTRIES.map(e => {
+    const enrichOne = k => {
+      const m = matchPlayer(k, players);
+      if (!m) return { key: k, match: null, toPar: MISSING_PENALTY, cut: false, missing: true };
+      const toPar = (m.toPar === null || typeof m.toPar === "undefined") ? 0 : m.toPar;
+      const effective = m.cut ? MISSING_PENALTY : toPar;
+      return { key: k, match: m, toPar: effective, cut: m.cut, missing: false };
+    };
+    const enriched = e.players.map(enrichOne);
+    const total = enriched.reduce((a, p) => a + (p.toPar || 0), 0);
+    const tbEnriched = (e.tiebreakers || []).map(enrichOne);
+    const tbTotal = tbEnriched.reduce((a, p) => a + (p.toPar || 0), 0);
+    return { entry: e, players: enriched, total, tiebreakers: tbEnriched, tbTotal };
+  });
+}
+
+function renderPool(rows) {
+  rows = rows.slice().sort((a, b) => {
+    let va, vb;
+    if (sortKey === "name") { va = a.entry.name.toLowerCase(); vb = b.entry.name.toLowerCase(); }
+    else if (sortKey === "tb") { va = a.tbTotal; vb = b.tbTotal; }
+    else { va = a.total; vb = b.total; }
+    if (va < vb) return -1 * sortDir;
+    if (va > vb) return  1 * sortDir;
+    // Secondary sort: tiebreaker total ascending (always)
+    if (sortKey !== "tb") {
+      if (a.tbTotal < b.tbTotal) return -1;
+      if (a.tbTotal > b.tbTotal) return  1;
+    }
+    return 0;
+  });
+
+  const tbody = document.querySelector("#poolTable tbody");
+  tbody.innerHTML = "";
+  let lastTotal = null, tiedRank = 0;
+  rows.forEach((r, i) => {
+    const rank = i + 1;
+    if (r.total !== lastTotal) { tiedRank = rank; lastTotal = r.total; }
+    const tr = document.createElement("tr");
+    if (i === 0) tr.classList.add("leader");
+    tr.innerHTML = `
+      <td><span class="rank">${tiedRank}</span></td>
+      <td class="team-name">${escapeHtml(r.entry.name)}${i === 0 ? ' <span class="crown">★</span>' : ''}</td>
+      <td class="num ${scoreClass(r.total)}">${formatScore(r.total)}</td>
+      <td class="players">${
+        r.players.map(p => {
+          const cls = p.missing ? "p miss" : (p.cut ? "p cut" : "p");
+          const scoreTxt = p.missing
+            ? "n/a"
+            : (p.match && p.match.toPar !== null ? formatScore(p.match.toPar) : "—");
+          const label = p.match ? displayLabel(p.match.name) : p.key;
+          const thru = p.match && p.match.thru ? `<span class="t">${escapeHtml(p.match.thru === "18" ? "F" : p.match.thru)}</span>` : "";
+          return `<span class="${cls}">${escapeHtml(label)}<span class="s">${scoreTxt}</span>${thru}</span>`;
+        }).join("")
+      }</td>
+      <td class="num tb-cell">${formatScore(r.tbTotal)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("poolCount").textContent = rows.length + " entries";
+}
+
+function renderTour(players) {
+  // Sort by toPar asc (nulls last)
+  const sorted = players.slice().sort((a, b) => {
+    const av = a.toPar === null ? 999 : a.toPar;
+    const bv = b.toPar === null ? 999 : b.toPar;
+    return av - bv;
+  });
+  const tbody = document.querySelector("#tourTable tbody");
+  tbody.innerHTML = "";
+  sorted.forEach(p => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="pos">${escapeHtml(p.pos || "—")}</td>
+      <td class="plr">${escapeHtml(p.name)}</td>
+      <td class="num ${scoreClass(p.toPar)}">${formatScore(p.toPar)}</td>
+      <td class="num thru">${escapeHtml(p.thru || "")}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("tourCount").textContent = players.length + " players";
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+
+// ============================================================
+// CONTROLLER
+// ============================================================
+const $dot = document.getElementById("dot");
+const $status = document.getElementById("statusText");
+
+async function tick() {
+  try {
+    $status.textContent = "Updating…";
+    const { players, roundInfo } = await fetchLeaderboard();
+    const scored = scoreEntries(players);
+    renderPool(scored);
+    renderTour(players);
+    if (roundInfo) {
+      const bits = [];
+      if (roundInfo.round) bits.push(roundInfo.round);
+      if (roundInfo.status) bits.push(roundInfo.status);
+      document.getElementById("roundInfo").textContent = bits.join(" · ") || "Live";
+    }
+    const now = new Date();
+    $dot.classList.remove("err");
+    $status.textContent = "Live · " + now.toLocaleTimeString();
+  } catch (e) {
+    console.error(e);
+    $dot.classList.add("err");
+    $status.textContent = "Offline · " + (e && e.message ? e.message : "error");
+  }
+}
+
+document.querySelectorAll("thead th[data-sort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir *= -1;
+    else { sortKey = k; sortDir = 1; }
+    // Re-render by re-fetching cached? Simpler: just tick.
+    tick();
+  });
+});
+document.getElementById("refreshBtn").addEventListener("click", tick);
+
+tick();
+setInterval(tick, 60000);
+</script>
+</body>
+</html>
