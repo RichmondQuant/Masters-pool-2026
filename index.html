@@ -4,6 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Masters Pool — Live</title>
+<meta name="description" content="Live Masters pool dashboard. Augusta National. A tradition unlike any other. Powered by Richmond Quant." />
+<meta property="og:title" content="The Masters Pool · Live Dashboard" />
+<meta property="og:description" content="Live scoring · Augusta National · Powered by Richmond Quant" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://richmondquant.github.io/Masters-pool-2026/" />
+<meta property="og:site_name" content="Richmond Quant" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="The Masters Pool · Live Dashboard" />
+<meta name="twitter:description" content="Live scoring · Augusta National · Powered by Richmond Quant" />
+<meta name="theme-color" content="#0b1d12" />
 <style>
   :root {
     --bg: #0b1d12;
@@ -166,19 +176,30 @@
   .players .p .s { color: var(--gold); font-variant-numeric: tabular-nums; margin-left: 4px; }
   .players .p .t {
     display: inline-block;
-    margin-left: 4px;
+    margin-left: 5px;
     padding: 1px 5px;
     font-size: 10px;
-    color: var(--muted);
-    border: 1px solid rgba(156,181,163,0.3);
-    border-radius: 2px;
+    color: var(--cream);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(156,181,163,0.35);
+    border-radius: 3px;
     font-variant-numeric: tabular-nums;
     vertical-align: 1px;
+    font-weight: 500;
+  }
+  .players .p .t.f {
+    color: var(--gold);
+    border-color: rgba(212,175,55,0.4);
+    background: rgba(212,175,55,0.08);
   }
   .players .p.cut { text-decoration: line-through; opacity: 0.55; }
   .players .p.miss { color: #6a8673; font-style: italic; }
 
   .tb-cell { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+  .wp { font-variant-numeric: tabular-nums; font-weight: 400; color: var(--cream); }
+  .wp-elite, .wp-strong, .wp-live, .wp-faint, .wp-zero { color: var(--cream); }
+  .wp-zero   { color: #4a5d51; font-weight: 400; }
 
   tr.leader {
     background: linear-gradient(90deg, rgba(212,175,55,0.18) 0%, rgba(212,175,55,0.04) 100%) !important;
@@ -241,6 +262,16 @@
     background: rgba(212,175,55,0.07);
     border-bottom: 1px solid var(--line);
   }
+  a.stealth, a.stealth:visited, a.stealth:active {
+    color: inherit;
+    text-decoration: none;
+    cursor: default;
+  }
+  a.stealth:hover {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -259,7 +290,7 @@
   </div>
 </header>
 
-<div class="banner" id="banner">Scoring each entry as the sum of its 4 golfers' scores-to-par. Missed/cut players score +10. Tiebreakers tracked but not added.</div>
+<div class="banner" id="banner">Each entry = sum of 4 golfers' scores-to-par. Cut/missing players score +10 per missed round. Win % from 25,000-sim Monte Carlo (<a href="https://richmondquant.com" class="stealth">Richmond Quant</a> model v1).</div>
 
 <main>
   <section class="panel">
@@ -271,6 +302,7 @@
             <th data-sort="rank">#</th>
             <th data-sort="name">Entry</th>
             <th data-sort="total" class="num">To Par</th>
+            <th data-sort="winpct" class="num" title="Monte Carlo simulated probability this team wins the pool">Win %</th>
             <th>Roster</th>
             <th data-sort="tb" class="num" title="Tiebreaker score (sum of tiebreaker picks). Lower wins ties.">TB</th>
           </tr>
@@ -290,6 +322,7 @@
             <th>Player</th>
             <th class="num">To Par</th>
             <th class="num">Thru</th>
+            <th class="num" title="Monte Carlo simulated probability this golfer wins the Masters">Win %</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -299,7 +332,7 @@
 </main>
 
 <footer>
-  Powered by <span class="gold">Richmond Quant</span> &nbsp;·&nbsp; Live data via ESPN &nbsp;·&nbsp; Auto-refresh every 60s
+  Powered by <a href="https://richmondquant.com" class="stealth"><span class="gold">Richmond Quant</span></a> &nbsp;·&nbsp; Live data via ESPN &nbsp;·&nbsp; Auto-refresh every 60s
 </footer>
 
 <script>
@@ -446,35 +479,57 @@ function extractPlayers(json) {
   if (!preferred) return { players: out, roundInfo };
 
   roundInfo.name = preferred.shortName || preferred.name || "";
-  if (preferred.status) {
-    roundInfo.round = preferred.status.period ? "Round " + preferred.status.period : "";
-    roundInfo.status = (preferred.status.type && (preferred.status.type.description || preferred.status.type.name)) || "";
-  }
+  // NOTE: We deliberately do NOT trust preferred.status.period or status.type
+  // here — ESPN updates these lazily between rounds. Round info is derived
+  // from the actual player data below.
 
   const comp = (preferred.competitions && preferred.competitions[0]) || null;
   if (!comp) return { players: out, roundInfo };
-  if (comp.status && !roundInfo.round && comp.status.period) {
-    roundInfo.round = "Round " + comp.status.period;
-  }
+
   const competitors = comp.competitors || [];
 
+  // First pass: extract everything
+  const rawList = [];
   for (const c of competitors) {
     const athlete = c.athlete || {};
     const name = athlete.displayName || athlete.fullName || "";
     if (!name) continue;
 
-    // Position / score to par
     let pos = "";
-    let thru = "";
+    let thruRaw = null;
     let toPar = null;
     let statusName = "";
+    let isCompleteHere = false;
+    let linescoresCount = 0;
 
     if (c.status) {
       statusName = (c.status.type && (c.status.type.description || c.status.type.name)) || c.status.displayValue || "";
       if (c.status.position && c.status.position.displayName) pos = c.status.position.displayName;
-      if (typeof c.status.thru !== "undefined") thru = c.status.thru;
+
+      if (typeof c.status.thru !== "undefined" && c.status.thru !== null) {
+        thruRaw = c.status.thru;
+      }
+      const typeName = (c.status.type && (c.status.type.name || "")).toLowerCase();
+      const typeState = (c.status.type && (c.status.type.state || "")).toLowerCase();
+      const dispVal = (c.status.displayValue || "").toString().trim();
+      isCompleteHere = typeState === "post" || /final|complete/i.test(typeName) || /^F(\s|$|\()/.test(dispVal);
+      // If displayValue is a pure number, prefer that as thru
+      if ((thruRaw === null || thruRaw === 0) && /^\d{1,2}$/.test(dispVal)) {
+        thruRaw = parseInt(dispVal, 10);
+      }
     }
-    // statistics array
+
+    // Count linescores — each completed round produces one
+    if (Array.isArray(c.linescores)) {
+      linescoresCount = c.linescores.filter(ls => {
+        if (!ls) return false;
+        const dv = (ls.displayValue || "").toString().trim();
+        if (!dv || dv === "-" || dv === "--") return false;
+        if (typeof ls.value === "number" && ls.value > 0) return true;
+        return /^\d/.test(dv);
+      }).length;
+    }
+
     if (Array.isArray(c.statistics)) {
       for (const s of c.statistics) {
         const nm = (s.name || "").toLowerCase();
@@ -484,26 +539,71 @@ function extractPlayers(json) {
         }
       }
     }
-    // Sometimes shown in `score.displayValue` or `linescores`
     if (toPar === null && c.score) {
       const v = parseScore(typeof c.score === "string" ? c.score : c.score.displayValue);
       if (v !== null) toPar = v;
     }
-    // Fallback: c.linescores sum... but usually scoretopar is there.
 
-    // Cut / WD detection
     const cut = /cut|WD|DQ|withdraw/i.test(statusName) || /CUT|WD|DQ/i.test(pos);
 
-    out.push({
-      name,
-      nameLc: stripDiacritics(name.toLowerCase()),
-      pos: pos || "",
-      thru: thru === 0 || thru ? String(thru) : "",
-      toPar: toPar,
-      cut: cut,
-      status: statusName
+    rawList.push({
+      name, pos, thruRaw, toPar, cut, statusName,
+      isCompleteHere, linescoresCount
     });
   }
+
+  // Compute round first, then derive thru using round-aware logic.
+
+  // ----- Date-based round detection -----
+  let currentRoundNum;
+  {
+    const MASTERS_START = new Date(2026, 3, 9);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diffDays = Math.floor((today - MASTERS_START) / (1000*60*60*24));
+    currentRoundNum = Math.max(1, Math.min(4, diffDays + 1));
+
+    const live = rawList.filter(r => !r.cut);
+    let anyMidRound = false;
+    let anyStarted = false;
+    for (const r of live) {
+      const t = r.thruRaw;
+      if (t !== null && t > 0 && t < 18) anyMidRound = true;
+      if (t !== null && t > 0) anyStarted = true;
+    }
+    let statusLabel;
+    if (anyMidRound) statusLabel = "In Progress";
+    else if (anyStarted) statusLabel = "Final";
+    else statusLabel = "Not Started";
+
+    if (diffDays > 3) { currentRoundNum = 4; statusLabel = "Final"; }
+    roundInfo.round = "Round " + currentRoundNum;
+    roundInfo.status = statusLabel;
+  }
+
+  // ----- Per-player thru derivation, round-aware -----
+  for (const r of rawList) {
+    let thruOut = "";
+    const t = r.thruRaw;
+    if (t !== null && t > 0 && t < 18) {
+      thruOut = String(t);
+    } else if (t === 18 || r.isCompleteHere) {
+      thruOut = "18";
+    } else if (currentRoundNum >= 2 && r.linescoresCount >= 1) {
+      thruOut = "—";
+    }
+
+    out.push({
+      name: r.name,
+      nameLc: stripDiacritics(r.name.toLowerCase()),
+      pos: r.pos || "",
+      thru: thruOut,
+      toPar: r.toPar,
+      cut: r.cut,
+      status: r.statusName
+    });
+  }
+
   return { players: out, roundInfo };
 }
 
@@ -521,7 +621,13 @@ function parseScore(v) {
 }
 
 function stripDiacritics(s) {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[øØ]/g, m => m === 'ø' ? 'o' : 'O')
+    .replace(/[åÅ]/g, m => m === 'å' ? 'a' : 'A')
+    .replace(/[æÆ]/g, m => m === 'æ' ? 'ae' : 'AE')
+    .replace(/[ðÐ]/g, m => m === 'ð' ? 'd' : 'D');
 }
 
 // ============================================================
@@ -596,11 +702,16 @@ function scoreEntries(players) {
   });
 }
 
-function renderPool(rows) {
+function renderPool(rows, teamWinPct) {
   rows = rows.slice().sort((a, b) => {
     let va, vb;
     if (sortKey === "name") { va = a.entry.name.toLowerCase(); vb = b.entry.name.toLowerCase(); }
     else if (sortKey === "tb") { va = a.tbTotal; vb = b.tbTotal; }
+    else if (sortKey === "winpct") {
+      // Higher win pct first → invert
+      va = -(teamWinPct ? (teamWinPct.get(a.entry.name) || 0) : 0);
+      vb = -(teamWinPct ? (teamWinPct.get(b.entry.name) || 0) : 0);
+    }
     else { va = a.total; vb = b.total; }
     if (va < vb) return -1 * sortDir;
     if (va > vb) return  1 * sortDir;
@@ -620,10 +731,12 @@ function renderPool(rows) {
     if (r.total !== lastTotal) { tiedRank = rank; lastTotal = r.total; }
     const tr = document.createElement("tr");
     if (i === 0) tr.classList.add("leader");
+    const wp = teamWinPct ? (teamWinPct.get(r.entry.name) || 0) : null;
     tr.innerHTML = `
       <td><span class="rank">${tiedRank}</span></td>
       <td class="team-name">${escapeHtml(r.entry.name)}${i === 0 ? ' <span class="crown">★</span>' : ''}</td>
       <td class="num ${scoreClass(r.total)}">${formatScore(r.total)}</td>
+      <td class="num wp ${pctClass(wp)}">${wp === null ? "—" : fmtPct(wp)}</td>
       <td class="players">${
         r.players.map(p => {
           const cls = p.missing ? "p miss" : (p.cut ? "p cut" : "p");
@@ -631,8 +744,15 @@ function renderPool(rows) {
             ? "n/a"
             : (p.match && p.match.toPar !== null ? formatScore(p.match.toPar) : "—");
           const label = p.match ? displayLabel(p.match.name) : p.key;
-          const thru = p.match && p.match.thru ? `<span class="t">${escapeHtml(p.match.thru === "18" ? "F" : p.match.thru)}</span>` : "";
-          return `<span class="${cls}">${escapeHtml(label)}<span class="s">${scoreTxt}</span>${thru}</span>`;
+          let thruChip = "";
+          if (p.match && p.match.thru) {
+            const tv = String(p.match.thru);
+            if (tv && tv !== "0") {
+              const isF = (tv === "18");
+              thruChip = `<span class="t${isF ? " f" : ""}">${escapeHtml(isF ? "F" : tv)}</span>`;
+            }
+          }
+          return `<span class="${cls}">${escapeHtml(label)}<span class="s">${scoreTxt}</span>${thruChip}</span>`;
         }).join("")
       }</td>
       <td class="num tb-cell">${formatScore(r.tbTotal)}</td>
@@ -642,7 +762,7 @@ function renderPool(rows) {
   document.getElementById("poolCount").textContent = rows.length + " entries";
 }
 
-function renderTour(players) {
+function renderTour(players, playerWinPct) {
   // Sort by toPar asc (nulls last)
   const sorted = players.slice().sort((a, b) => {
     const av = a.toPar === null ? 999 : a.toPar;
@@ -653,11 +773,16 @@ function renderTour(players) {
   tbody.innerHTML = "";
   sorted.forEach(p => {
     const tr = document.createElement("tr");
+    const wp = playerWinPct ? (playerWinPct.get(p.nameLc) || 0) : null;
+    let thruDisp = "";
+    if (p.thru === "18" || p.thru === 18) thruDisp = "F";
+    else if (p.thru && p.thru !== "0" && p.thru !== 0) thruDisp = String(p.thru);
     tr.innerHTML = `
       <td class="pos">${escapeHtml(p.pos || "—")}</td>
       <td class="plr">${escapeHtml(p.name)}</td>
       <td class="num ${scoreClass(p.toPar)}">${formatScore(p.toPar)}</td>
-      <td class="num thru">${escapeHtml(p.thru || "")}</td>
+      <td class="num thru">${escapeHtml(thruDisp)}</td>
+      <td class="num wp ${pctClass(wp)}">${wp === null ? "—" : fmtPct(wp)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -671,6 +796,329 @@ function escapeHtml(s) {
 }
 
 // ============================================================
+// MONTE CARLO SIMULATION ENGINE — Richmond Quant Model v1
+// ============================================================
+//
+// Per-golfer skill: μᵢ = w · observed + (1-w) · prior
+//   observed = score-to-par per round played (with mid-round pro-rate)
+//   prior    = light 3-bucket tier (elite / pro / amateur)
+//   w        = min(rounds_completed / 2, 0.85)
+//
+// Per-round model: score_ir = μᵢ + shared_shock_r + idio_ir
+//   shared_shock_r ~ N(0, 1.2)   // weather/conditions affect everyone
+//   idio_ir        ~ N(0, 2.6)   // golfer-specific noise
+//   Total per-round SD ≈ 2.86 (matches Augusta empirics)
+//
+// Cut: top 50 + ties at 36 holes. Cut players get +CUT_PENALTY per
+// missed round (R3 and R4).
+// ============================================================
+
+const SIM_CONFIG = {
+  N_SIMS: 25000,
+  TOTAL_ROUNDS: 4,
+  CUT_AFTER_ROUND: 2,
+  CUT_LINE_SIZE: 50,            // top 50 + ties make the cut
+  CUT_PENALTY: 10,              // strokes added per missed round
+  SIGMA_SHARED: 1.2,
+  SIGMA_IDIO: 3.6,
+  PRIOR_WEIGHT_CAP: 0.85,       // observed never fully replaces prior
+  PRIOR_DIVISOR: 3,             // w = min(rounds_played / 3, cap)
+};
+
+// Two-tier elite prior + pro/amateur baselines (μ in strokes-to-par per round)
+const PRIOR_SUPER = -1.2;       // true contenders
+const PRIOR_ELITE = -0.6;       // top-30 ish
+const PRIOR_PRO = 0.8;          // made-the-field tour pros
+const PRIOR_AMATEUR = 2.5;      // amateurs / ceremonial past champs
+
+// Substring matches against the lowercase, diacritic-stripped player name
+const SUPER_KEYS = [
+  "scheffler","mcilroy","schauffele","aberg","rahm","dechambeau"
+];
+const ELITE_KEYS = [
+  "morikawa","matsuyama","fleetwood","justin thomas","cantlay",
+  "hatton","hovland","spieth","justin rose","fitzpatrick",
+  "sam burns","cameron young"
+];
+const AMATEUR_HINTS = [
+  "(a)","olazabal","cabrera","vijay singh","mike weir"
+];
+
+function priorFor(nameLc) {
+  for (const k of AMATEUR_HINTS) if (nameLc.includes(k)) return PRIOR_AMATEUR;
+  for (const k of SUPER_KEYS)    if (nameLc.includes(k)) return PRIOR_SUPER;
+  for (const k of ELITE_KEYS)    if (nameLc.includes(k)) return PRIOR_ELITE;
+  return PRIOR_PRO;
+}
+
+// Box-Muller normal sampler
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Estimate skill (μ) and the rounds-already-played for one player.
+// Returns null for players who can't be modeled (cut/WD/missing).
+function estimateSkill(p, currentRound) {
+  if (p.cut) return null;
+  const prior = priorFor(p.nameLc);
+
+  // How many full rounds has this player completed? Use thru if available.
+  const thru = parseInt(p.thru, 10);
+  const completedRounds = Math.max(0, currentRound - 1);  // rounds fully done before the current one
+  let roundsPlayedFloat = completedRounds;
+  let inProgress = false;
+  if (!isNaN(thru) && thru > 0 && thru < 18) {
+    roundsPlayedFloat += thru / 18;
+    inProgress = true;
+  } else if (!isNaN(thru) && thru >= 18) {
+    roundsPlayedFloat = currentRound;
+  } else if (currentRound === 1) {
+    // No thru info yet — assume hasn't started
+    roundsPlayedFloat = 0;
+  }
+
+  const obsScore = (typeof p.toPar === "number") ? p.toPar : 0;
+  const observedPerRound = roundsPlayedFloat > 0 ? (obsScore / roundsPlayedFloat) : prior;
+
+  const w = Math.min(roundsPlayedFloat / SIM_CONFIG.PRIOR_DIVISOR, SIM_CONFIG.PRIOR_WEIGHT_CAP);
+  const mu = w * observedPerRound + (1 - w) * prior;
+
+  return {
+    name: p.name,
+    nameLc: p.nameLc,
+    mu: mu,
+    currentScore: obsScore,
+    roundsPlayedFloat: roundsPlayedFloat,
+    inProgress: inProgress,
+    inProgressThru: !isNaN(thru) ? thru : 0,
+    cut: false
+  };
+}
+
+// Detect what round we're currently in based on max thru value across the field
+function detectCurrentRound(players) {
+  // ESPN doesn't always tag this cleanly; infer from completion.
+  // If most players have thru ≥ 18, we've moved past R1.
+  // Simplest heuristic: count how many have toPar set and look at their progress.
+  // For now we trust the round indicator from extractPlayers, defaulting to 1.
+  return CURRENT_ROUND_HINT || 1;
+}
+let CURRENT_ROUND_HINT = 1;
+
+// Run the full Monte Carlo simulation.
+// Returns: { playerWinPct: Map<nameLc, pct>, teamWinPct: Map<entryName, pct>, sims: N }
+function runSimulation(players, scoredEntries, currentRound) {
+  const N = SIM_CONFIG.N_SIMS;
+  const cfg = SIM_CONFIG;
+
+  // Build skill estimates for every player in the field
+  const modeled = [];        // { name, nameLc, mu, currentScore, roundsPlayedFloat, inProgress, inProgressThru }
+  const cutAlready = new Set();
+  for (const p of players) {
+    const sk = estimateSkill(p, currentRound);
+    if (!sk) { cutAlready.add(p.nameLc); continue; }
+    modeled.push(sk);
+  }
+
+  const playerWins = new Array(modeled.length).fill(0);
+  const teamWins = new Array(scoredEntries.length).fill(0);
+
+  // Pre-build entry → matched player indices for fast scoring
+  // For each entry, for each of its 4 picks, find the index in `modeled`
+  // (or null if missing/cut/not in field).
+  const entryPlayerIdx = scoredEntries.map(se => {
+    return se.players.map(p => {
+      if (p.missing || !p.match) return -1;
+      const idx = modeled.findIndex(m => m.nameLc === p.match.nameLc);
+      return idx; // -1 if cut already
+    });
+  });
+  const entryTbIdx = scoredEntries.map(se => {
+    return (se.tiebreakers || []).map(p => {
+      if (p.missing || !p.match) return -1;
+      const idx = modeled.findIndex(m => m.nameLc === p.match.nameLc);
+      return idx;
+    });
+  });
+
+  const roundsRemainingAfterCurrent = cfg.TOTAL_ROUNDS - currentRound;
+  // If currentRound is 1 and players have partial thrus, we need to finish R1 too.
+
+  // Scratch arrays
+  const finalScores = new Float64Array(modeled.length);
+  const made36 = new Uint8Array(modeled.length);
+
+  for (let s = 0; s < N; s++) {
+    // ---- Step 1: finish R1 if needed ----
+    // Each modeled player has currentScore + roundsPlayedFloat partial.
+    // We need to project them out to a full 4-round total.
+    for (let i = 0; i < modeled.length; i++) {
+      finalScores[i] = modeled[i].currentScore;
+    }
+
+    // We'll simulate from "now" through the end of R4.
+    // Number of effective rounds remaining for each player = TOTAL - roundsPlayedFloat
+    // We do this in a round-by-round loop so we can apply the cut.
+
+    // Determine how many more rounds we need to simulate (worst case = TOTAL_ROUNDS)
+    // We'll do TOTAL_ROUNDS - floor(min roundsPlayedFloat) iterations max.
+    // Simpler approach: simulate rounds 1..4, but for each player only contribute
+    // the *unplayed* fraction of each round.
+
+    // Tracking played-fraction per player as we go
+    const playedSoFar = new Float64Array(modeled.length);
+    for (let i = 0; i < modeled.length; i++) playedSoFar[i] = modeled[i].roundsPlayedFloat;
+
+    // Track 36-hole totals for cut
+    const totalAfter36 = new Float64Array(modeled.length);
+    let appliedCut = false;
+
+    for (let r = 1; r <= cfg.TOTAL_ROUNDS; r++) {
+      const sharedShock = randn() * cfg.SIGMA_SHARED;
+      for (let i = 0; i < modeled.length; i++) {
+        const m = modeled[i];
+        // Fraction of this round that is unplayed
+        const playedThroughRound = Math.min(playedSoFar[i], r);
+        const fracUnplayed = Math.max(0, r - Math.max(r - 1, playedThroughRound));
+        // Equivalent: how much of round r is left to play
+        // If playedSoFar >= r, fracUnplayed = 0
+        // If playedSoFar <= r-1, fracUnplayed = 1
+        // Otherwise, fracUnplayed = r - playedSoFar
+        let frac;
+        if (playedSoFar[i] >= r) frac = 0;
+        else if (playedSoFar[i] <= r - 1) frac = 1;
+        else frac = r - playedSoFar[i];
+
+        if (frac > 0) {
+          // Sample partial round score: scale mean and variance by frac
+          const idio = randn() * cfg.SIGMA_IDIO * Math.sqrt(frac);
+          const partialMean = m.mu * frac;
+          const partialShared = sharedShock * frac;
+          finalScores[i] += partialMean + partialShared + idio;
+          playedSoFar[i] = r;
+        }
+      }
+
+      // Apply cut after round 2
+      if (r === cfg.CUT_AFTER_ROUND && !appliedCut) {
+        appliedCut = true;
+        // Snapshot 36-hole totals
+        for (let i = 0; i < modeled.length; i++) totalAfter36[i] = finalScores[i];
+        // Find cut line: 50th best score (top 50 + ties)
+        const sortedScores = Array.from(totalAfter36).sort((a, b) => a - b);
+        const cutIdx = Math.min(cfg.CUT_LINE_SIZE - 1, sortedScores.length - 1);
+        const cutLine = sortedScores[cutIdx];
+        for (let i = 0; i < modeled.length; i++) {
+          made36[i] = (totalAfter36[i] <= cutLine) ? 1 : 0;
+        }
+      }
+    }
+
+    // Apply cut penalty: anyone who missed gets +CUT_PENALTY per missed round
+    // (R3 and R4 are post-cut → 2 missed rounds → +20 by default)
+    if (appliedCut) {
+      const missedRoundsCount = cfg.TOTAL_ROUNDS - cfg.CUT_AFTER_ROUND;
+      for (let i = 0; i < modeled.length; i++) {
+        if (!made36[i]) {
+          // Their finalScores already include simulated R3+R4. Replace with cut penalty.
+          finalScores[i] = totalAfter36[i] + missedRoundsCount * cfg.CUT_PENALTY;
+        }
+      }
+    }
+
+    // ---- Step 2: determine player winner (lowest final score) ----
+    let bestScore = Infinity, bestIdx = -1;
+    for (let i = 0; i < modeled.length; i++) {
+      if (finalScores[i] < bestScore) { bestScore = finalScores[i]; bestIdx = i; }
+    }
+    if (bestIdx >= 0) playerWins[bestIdx]++;
+
+    // ---- Step 3: score teams ----
+    let bestTeamScore = Infinity, bestTeamIdx = -1;
+    let bestTeamTb = Infinity;
+    const teamScores = new Float64Array(scoredEntries.length);
+    const teamTbScores = new Float64Array(scoredEntries.length);
+    for (let t = 0; t < scoredEntries.length; t++) {
+      const idxs = entryPlayerIdx[t];
+      let total = 0;
+      for (let k = 0; k < idxs.length; k++) {
+        if (idxs[k] === -1) {
+          // Cut already / missing → fixed penalty for full tournament.
+          // We need to add a "missing player" penalty equivalent to playing
+          // +CUT_PENALTY per round for the rounds remaining. Use +10 per
+          // remaining round. For Zalatoris-style not-in-field, treat as cut
+          // for all 4 rounds.
+          total += cfg.CUT_PENALTY * cfg.TOTAL_ROUNDS;
+        } else {
+          total += finalScores[idxs[k]];
+        }
+      }
+      teamScores[t] = total;
+
+      // Tiebreaker total
+      const tbIdxs = entryTbIdx[t];
+      let tbTotal = 0;
+      for (let k = 0; k < tbIdxs.length; k++) {
+        if (tbIdxs[k] === -1) tbTotal += cfg.CUT_PENALTY * cfg.TOTAL_ROUNDS;
+        else tbTotal += finalScores[tbIdxs[k]];
+      }
+      teamTbScores[t] = tbTotal;
+    }
+    // Find best team, breaking ties by tb
+    for (let t = 0; t < scoredEntries.length; t++) {
+      if (teamScores[t] < bestTeamScore ||
+         (teamScores[t] === bestTeamScore && teamTbScores[t] < bestTeamTb)) {
+        bestTeamScore = teamScores[t];
+        bestTeamTb = teamTbScores[t];
+        bestTeamIdx = t;
+      }
+    }
+    if (bestTeamIdx >= 0) teamWins[bestTeamIdx]++;
+  }
+
+  // Build output maps
+  const playerWinPct = new Map();
+  for (let i = 0; i < modeled.length; i++) {
+    playerWinPct.set(modeled[i].nameLc, playerWins[i] / N);
+  }
+  const teamWinPct = new Map();
+  for (let t = 0; t < scoredEntries.length; t++) {
+    teamWinPct.set(scoredEntries[t].entry.name, teamWins[t] / N);
+  }
+  return { playerWinPct, teamWinPct, sims: N };
+}
+
+// Cache: only re-run sims when scores actually change
+let SIM_CACHE = { hash: null, result: null };
+function maybeRunSimulation(players, scoredEntries, currentRound) {
+  // Build a quick hash of the live data
+  const hash = "r" + currentRound + "|" + players.map(p => p.nameLc + ":" + p.toPar + ":" + p.thru + ":" + (p.cut?1:0)).join("|");
+  if (SIM_CACHE.hash === hash && SIM_CACHE.result) return SIM_CACHE.result;
+  const t0 = performance.now();
+  const result = runSimulation(players, scoredEntries, currentRound);
+  const t1 = performance.now();
+  result.elapsedMs = Math.round(t1 - t0);
+  SIM_CACHE = { hash, result };
+  return result;
+}
+
+function fmtPct(p) {
+  if (p === null || typeof p === "undefined") return "—";
+  if (p < 0.01) return "<1%";
+  return (p * 100).toFixed(1) + "%";
+}
+function pctClass(p) {
+  if (p == null) return "wp-zero";
+  if (p >= 0.10) return "wp-elite";
+  if (p >= 0.03) return "wp-strong";
+  if (p >= 0.01) return "wp-live";
+  return "wp-zero";
+}
+
+// ============================================================
 // CONTROLLER
 // ============================================================
 const $dot = document.getElementById("dot");
@@ -681,13 +1129,32 @@ async function tick() {
     $status.textContent = "Updating…";
     const { players, roundInfo } = await fetchLeaderboard();
     const scored = scoreEntries(players);
-    renderPool(scored);
-    renderTour(players);
+
+    // Determine current round from ESPN status, default 1
+    if (roundInfo && roundInfo.round) {
+      const m = roundInfo.round.match(/(\d+)/);
+      if (m) CURRENT_ROUND_HINT = parseInt(m[1], 10);
+    }
+
+    // Run Monte Carlo (cached if scores unchanged)
+    let simResult = null;
+    try {
+      simResult = maybeRunSimulation(players, scored, CURRENT_ROUND_HINT);
+    } catch (simErr) {
+      console.error("Sim error:", simErr);
+    }
+
+    renderPool(scored, simResult ? simResult.teamWinPct : null);
+    renderTour(players, simResult ? simResult.playerWinPct : null);
     if (roundInfo) {
       const bits = [];
       if (roundInfo.round) bits.push(roundInfo.round);
       if (roundInfo.status) bits.push(roundInfo.status);
-      document.getElementById("roundInfo").textContent = bits.join(" · ") || "Live";
+      if (simResult) {
+        const ms = simResult.elapsedMs ? " (" + simResult.elapsedMs + "ms)" : "";
+        bits.push("Sim n=" + simResult.sims.toLocaleString() + ms);
+      }
+      document.getElementById("roundInfo").innerHTML = bits.join(" · ") || "Live";
     }
     const now = new Date();
     $dot.classList.remove("err");
