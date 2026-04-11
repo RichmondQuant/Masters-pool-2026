@@ -192,7 +192,34 @@
     border-color: rgba(212,175,55,0.4);
     background: rgba(212,175,55,0.08);
   }
-  .players .p.cut { text-decoration: line-through; opacity: 0.55; }
+  .players .p.cut { text-decoration: line-through; opacity: 0.6; }
+  .cutline-row { background: rgba(212,175,55,0.1); }
+  .cutline-cell {
+    text-align: center !important;
+    padding: 6px 8px !important;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold) !important;
+    border-top: 1px solid var(--gold);
+    border-bottom: 1px solid var(--gold);
+  }
+  .cut-row { opacity: 0.55; }
+  .cut-row .plr { text-decoration: line-through; }
+  .players .cutchip {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 4px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #2a0f0f;
+    background: #c44;
+    border-radius: 2px;
+    text-decoration: none;
+    vertical-align: middle;
+  }
   .players .p.miss { color: #6a8673; font-style: italic; }
 
   .tb-cell { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
@@ -371,9 +398,9 @@ const ENTRIES = [
   {"name":"Andy1","players":["Scottie","Burns","Bryson","Koepka"],"tiebreakers":["Si Woo","JT"]},
   {"name":"Danny2","players":["Rory","Burns","Bryson","Conners"],"tiebreakers":["English","Berger"]},
   {"name":"Allan1","players":["Scottie","Xander","Bryson","Reed"],"tiebreakers":["Rahm","Bryson"]},
-  {"name":"Allan3","players":["Fleetwood","Xander","Aberg","Xander"],"tiebreakers":["Rahm","Bryson"]},
+  {"name":"Allan3","players":["Fleetwood","Burns","Aberg","Xander"],"tiebreakers":["Rahm","Bryson"]},
   {"name":"MP1","players":["Scottie","Aberg","Spieth","Xander"],"tiebreakers":["Aberg","Xander"]},
-  {"name":"Ted","players":["Scottie","Aberg","Gotterup","Xander"],"tiebreakers":["Xander","Aberg"]},
+  {"name":"Ted","players":["Scottie","Burns","Gotterup","Xander"],"tiebreakers":["Xander","Aberg"]},
   {"name":"Samantha","players":["Scottie","Aberg","Rose","JT"],"tiebreakers":["Aberg","JT"]},
   {"name":"Carolyn","players":["Scottie","Lowry","Henley","Fitzpatrick"],"tiebreakers":["Echavarria","Griffin"]},
   {"name":"Sam1","players":["Scottie","Aberg","Fitzpatrick","Xander"],"tiebreakers":["Aberg","Fitzpatrick"]},
@@ -384,7 +411,7 @@ const ENTRIES = [
   {"name":"Jim2","players":["Scottie","Rahm","Fitzpatrick","Reed"],"tiebreakers":["Aberg","Rose"]},
   {"name":"MikeH","players":["Young","Aberg","Morikawa","Xander"],"tiebreakers":["Rahm","Bryson"]},
   {"name":"Bonnie3","players":["Young","Rahm","Rose","Xander"],"tiebreakers":["Xander","Rahm"]},
-  {"name":"JP1","players":["Scottie","Rahm","Aberg","Xander"],"tiebreakers":["Xander","Rahm"]},
+  {"name":"JP1","players":["Scottie","Day","Aberg","Xander"],"tiebreakers":["Xander","Rahm"]},
   {"name":"Bryan","players":["Scottie","Rahm","Aberg","Xander"],"tiebreakers":["Hideki","Niemann"]},
   {"name":"Koz","players":["Young","Rahm","Bryson","Xander"],"tiebreakers":["Xander","Rahm"]},
   {"name":"Schuma","players":["Young","MacIntyre","Rose","Xander"],"tiebreakers":["Xander","MacIntyre"]},
@@ -754,7 +781,8 @@ function renderPool(rows, teamWinPct) {
               thruChip = `<span class="t${isF ? " f" : ""}">${escapeHtml(isF ? "F" : tv)}</span>`;
             }
           }
-          return `<span class="${cls}">${escapeHtml(label)}<span class="s">${scoreTxt}</span>${thruChip}</span>`;
+          const cutChip = p.cut ? `<span class="cutchip">CUT</span>` : "";
+          return `<span class="${cls}">${escapeHtml(label)}<span class="s">${scoreTxt}</span>${thruChip}${cutChip}</span>`;
         }).join("")
       }</td>
       <td class="num tb-cell">${formatScore(r.tbTotal)}</td>
@@ -765,16 +793,28 @@ function renderPool(rows, teamWinPct) {
 }
 
 function renderTour(players, playerWinPct) {
-  // Sort by toPar asc (nulls last)
+  // Sort by toPar asc, with cut players forced to the bottom (and sorted by
+  // toPar within the cut group). This creates a clean visual break.
   const sorted = players.slice().sort((a, b) => {
+    if (a.cut !== b.cut) return a.cut ? 1 : -1;
     const av = a.toPar === null ? 999 : a.toPar;
     const bv = b.toPar === null ? 999 : b.toPar;
     return av - bv;
   });
   const tbody = document.querySelector("#tourTable tbody");
   tbody.innerHTML = "";
+  let cutLineInserted = false;
   sorted.forEach(p => {
+    // Insert cut-line divider once, right before the first cut player
+    if (!cutLineInserted && p.cut) {
+      const divider = document.createElement("tr");
+      divider.className = "cutline-row";
+      divider.innerHTML = `<td colspan="5" class="cutline-cell">— Cut Line —</td>`;
+      tbody.appendChild(divider);
+      cutLineInserted = true;
+    }
     const tr = document.createElement("tr");
+    if (p.cut) tr.classList.add("cut-row");
     const wp = playerWinPct ? (playerWinPct.get(p.nameLc) || 0) : null;
     let thruDisp = "";
     if (p.thru === "18" || p.thru === 18) thruDisp = "F";
